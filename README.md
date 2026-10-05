@@ -1,4 +1,4 @@
-# ScrollEd
+# Based on ScrollEd
 
 Turn a textbook chapter into a scrollable feed of short lessons, each with a quiz question.
 
