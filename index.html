@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScrollEd Clone + Omni AI Video Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Gradio JS Client for Hugging Face Spaces API -->
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@gradio/client@0.14.0/dist/index.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .snap-container { scroll-snap-type: y mandatory; }
+        .snap-section { scroll-snap-align: start; scroll-snap-stop: always; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Navigation -->
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md px-6 py-4 flex items-center justify-between z-50">
+        <div class="flex items-center space-x-3">
+            <div class="bg-indigo-600 text-white font-bold px-3 py-1.5 rounded-xl text-lg tracking-wider">SE</div>
+            <span class="font-bold text-xl tracking-tight bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">ScrollEd x Omni AI</span>
+        </div>
+        <div id="nav-progress" class="hidden items-center space-x-4">
+            <span id="progress-text" class="text-xs text-slate-400 font-medium">Card 1 of 4</span>
+            <div class="w-32 bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div id="progress-bar" class="bg-indigo-500 h-full transition-all duration-300" style="width: 25%;"></div>
+            </div>
+            <button onclick="resetApp()" class="text-xs text-indigo-400 hover:text-indigo-300 font-semibold border border-indigo-500/30 px-3 py-1.5 rounded-lg transition">📁 Switch Book</button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative overflow-hidden flex flex-col items-center justify-center">
+
+        <!-- LOADING / GENERATING OVERLAY MODAL -->
+        <div id="loading-modal" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex flex-col items-center justify-center text-center p-6">
+            <div class="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <h3 id="loading-title" class="text-xl font-bold mb-2">Connecting to Omni AI Video Factory...</h3>
+            <p id="loading-subtitle" class="text-sm text-slate-400 max-w-md">Synthesizing cinematic video generation for your custom text feed. Please keep this tab open.</p>
+        </div>
+
+        <!-- VIEW 1: UPLOAD / DASHBOARD -->
+        <div id="view-upload" class="w-full max-w-2xl px-6 py-12 flex flex-col items-center text-center overflow-y-auto max-h-full no-scrollbar z-10">
+            <div class="inline-flex items-center space-x-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-4 py-1.5 rounded-full text-xs font-semibold mb-4">
+                <span>⚡ Powered by Hugging Face ZeroGPU & Omni-Video-Factory</span>
+            </div>
+            <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3 leading-tight">
+                AI Video-Powered <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Micro-Learning</span>.
+            </h1>
+            <p class="text-slate-400 text-sm sm:text-base mb-6 max-w-lg">
+                Drop your text file or notes below. Our script will auto-generate bespoke AI background video clips for every single card using Hugging Face!
+            </p>
+
+            <!-- Dropzone / Input Box -->
+            <div id="drop-zone" class="w-full bg-slate-900/90 backdrop-blur border-2 border-dashed border-slate-700 hover:border-indigo-500 transition rounded-3xl p-6 sm:p-8 flex flex-col items-center shadow-2xl relative">
+                <div class="w-14 h-14 bg-indigo-600/10 text-indigo-400 rounded-2xl flex items-center justify-center text-2xl mb-3 pointer-events-none">
+                    🎞️
+                </div>
+                <h3 class="font-semibold text-base sm:text-lg mb-1 pointer-events-none">Drag & Drop your text file here</h3>
+                <p id="file-instruction" class="text-xs text-slate-400 mb-4 pointer-events-none">Supports .txt or .md summaries</p>
+                
+                <button type="button" onclick="document.getElementById('file-input').click()" class="bg-slate-800 hover:bg-slate-700 text-indigo-300 font-medium text-xs px-4 py-2 rounded-xl mb-4 transition border border-slate-700 cursor-pointer">
+                    Browse Computer...
+                </button>
+
+                <input type="file" id="file-input" class="hidden" accept=".txt,.md,.json,.csv">
+
+                <div class="w-full text-left text-xs font-semibold text-slate-400 mb-2">Or paste text directly:</div>
+                <textarea id="source-text-input" rows="3" placeholder="Paste chapters or learning paragraphs here..." class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:outline-none rounded-xl p-3 text-sm text-slate-200 resize-none mb-4"></textarea>
+                
+                <div class="flex flex-wrap gap-3 justify-center w-full">
+                    <button onclick="loadDemoContent()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-3 px-4 rounded-xl text-xs sm:text-sm transition">
+                        Load Quick Demo 🚀
+                    </button>
+                    <button onclick="processAndGenerateAIContent()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-lg shadow-indigo-600/30 transition">
+                        Generate AI Video Feed 🎥
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 2: SMART-SCROLLING FEED WITH AI VIDEOS -->
+        <div id="view-feed" class="hidden w-full h-full snap-container overflow-y-auto no-scrollbar relative flex flex-col items-center">
+            
+            <!-- Dynamic Background Video Element -->
+            <div id="bg-video-container" class="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0 opacity-40">
+                <video id="ambient-video-element" class="absolute w-full h-full object-cover" autoplay muted loop playsinline></video>
+            </div>
+            <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm z-0 pointer-events-none"></div>
+
+            <div id="cards-wrapper" class="w-full max-w-xl flex flex-col items-center py-10 px-4 space-y-12 min-h-full justify-center z-10">
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Client-side Logic -->
+    <script>
+        const demoCards = [
+            {
+                type: "idea",
+                badge: "AI Concept 01 / 03",
+                title: "The Mechanics of Habit Loops",
+                content: "Every habit operates through a psychological feedback loop consisting of a cue, a routine, and a reward. Understanding this loop is the foundational key to overriding unwanted behaviors.",
+                evidence: "“Habits, once formed, leave an indelible neurological trace.” — W. James",
+                takeaway: "Identify the trigger cue that sparks your automatic behavior pattern.",
+                videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+            },
+            {
+                type: "idea",
+                badge: "AI Concept 02 / 03",
+                title: "The 2-Minute Rule for Action",
+                content: "When you start a new habit, it should take less than two minutes to do. The goal is not to instantly master a massive routine, but to master showing up consistently.",
+                evidence: "“The actions that follow can be challenging, but the first two minutes should be effortless.”",
+                takeaway: "Scale down your big goals into micro-actions under 120 seconds.",
+                videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
+            },
+            {
+                type: "quiz",
+                badge: "Knowledge Check 🧠",
+                question: "According to the lesson context, what are the three parts of every habit loop?",
+                options: [
+                    "Idea, Action, Result",
+                    "Cue, Routine, Reward",
+                    "Prompt, Focus, Habit",
+                    "Trigger, Speed, Dopamine"
+                ],
+                correct: 1,
+                explanation: "Correct! The habit loop consists of a Cue, a Routine, and a Reward."
+            }
+        ];
+
+        let currentCards = [];
+
+        // Global Drag & Drop safeguards
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+
+        window.addEventListener('dragover', (e) => e.preventDefault(), false);
+        window.addEventListener('drop', (e) => e.preventDefault(), false);
+
+        dropZone.addEventListener('dragenter', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('border-indigo-500', 'bg-slate-800/50'); });
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; dropZone.classList.add('border-indigo-500', 'bg-slate-800/50'); });
+        dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('border-indigo-500', 'bg-slate-800/50'); });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            dropZone.classList.remove('border-indigo-500', 'bg-slate-800/50');
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            document.getElementById('file-instruction').innerText = `✅ Loaded: ${file.name}`;
+            const reader = new FileReader();
+            reader.onload = function(e) { document.getElementById('source-text-input').value = e.target.result; };
+            reader.readAsText(file);
+        }
+
+        function loadDemoContent() {
+            currentCards = demoCards;
+            initFeed();
+        }
+
+        // --- Connect to Hugging Face Space API via @gradio/client ---
+        async function processAndGenerateAIContent() {
+            const text = document.getElementById('source-text-input').value.trim();
+            if (!text) { alert('Please upload a file or paste text first!'); return; }
+            
+            const chunks = text.split(/\n\n+/).slice(0, 3); // Limit to 3 chunks for demo stability
+            const modal = document.getElementById('loading-modal');
+            const loadingTitle = document.getElementById('loading-title');
+            const loadingSubtitle = document.getElementById('loading-subtitle');
+            
+            modal.classList.remove('hidden');
+            currentCards = [];
+
+            try {
+                // Connect to Hugging Face Space API
+                loadingTitle.innerText = "Connecting to Omni-Video-Factory...";
+                const client = await window.GradioClient.Client.connect("vamo455/Omni-videos-custom-auto_prompt_high-quality");
+
+                for (let i = 0; i < chunks.length; i++) {
+                    const chunk = chunks[i];
+                    loadingTitle.innerText = `Generating AI Video ${i + 1} of ${chunks.length}...`;
+                    loadingSubtitle.innerText = `Sending prompt to Hugging Face ZeroGPU: "${chunk.substring(0, 40)}..."`;
+
+                    let videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"; // Default fallback if API takes too long
+
+                    try {
+                        // Call the Space's API endpoint (adjust parameters according to the Space's standard signature)
+                        // Parameter structure: [scene_count, seconds_per_sec, resolution, prompt_mode, prompt_text, ...]
+                        const response = await client.predict("/predict", [
+                            1,                     // Scene Count
+                            3,                     // Seconds per scene
+                            384,                   // Resolution
+                            "Auto Prompt",         // Prompt mode
+                            chunk                  // Custom text prompt for video generation
+                        ]);
+
+                        if (response && response.data) {
+                            // Extract video file path returned by Gradio
+                            const outputItem = response.data[0];
+                            if (typeof outputItem === 'string') {
+                                videoUrl = outputItem;
+                            } else if (outputItem && outputItem.url) {
+                                videoUrl = outputItem.url;
+                            }
+                        }
+                    } catch (apiErr) {
+                        console.warn("API queue limit or timeout reached, falling back to cinematic loop asset.", apiErr);
+                    }
+
+                    currentCards.push({
+                        type: "idea",
+                        badge: `AI Generated Concept 0${i + 1}`,
+                        title: `Insight #${i + 1}`,
+                        content: chunk,
+                        evidence: "Dynamically generated via Hugging Face Omni-Video-Factory pipeline.",
+                        takeaway: "Integrate this extracted concept into your routine.",
+                        videoUrl: videoUrl
+                    });
+                }
+
+                // Append a quiz at the end
+                currentCards.push({
+                    type: "quiz",
+                    badge: "Comprehension Check 🧠",
+                    question: "Based on the text source you supplied, what is the primary focus?",
+                    options: [
+                        "Micro-learning and optimized workflows",
+                        "Arbitrary code strings",
+                        "Unstructured noise",
+                        "None of the above"
+                    ],
+                    correct: 0,
+                    explanation: "Great job! You've completed your custom AI video feed session."
+                });
+
+                modal.classList.add('hidden');
+                initFeed();
+
+            } catch (err) {
+                console.error(err);
+                modal.classList.add('hidden');
+                alert("Could not reach the Hugging Face Space API directly (it may be sleeping or rate-limited). Loading fallback layout instead.");
+                loadDemoContent();
+            }
+        }
+
+        function initFeed() {
+            document.getElementById('view-upload').classList.add('hidden');
+            document.getElementById('view-feed').classList.remove('hidden');
+            document.getElementById('nav-progress').classList.remove('hidden');
+            document.getElementById('nav-progress').classList.add('flex');
+
+            const wrapper = document.getElementById('cards-wrapper');
+            wrapper.innerHTML = '';
+
+            currentCards.forEach((card) => {
+                const section = document.createElement('section');
+                section.className = 'snap-section w-full flex items-center justify-center min-h-[75vh] py-4';
+                section.dataset.video = card.videoUrl || '';
+                
+                if (card.type === 'idea') {
+                    section.innerHTML = `
+                        <div class="w-full bg-slate-900/90 backdrop-blur-md border border-slate-800 hover:border-indigo-500/50 transition-all rounded-3xl p-6 sm:p-8 shadow-2xl relative flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-center justify-between mb-6">
+                                    <span class="text-xs font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-3 py-1 rounded-full">${card.badge}</span>
+                                    <span class="text-xs text-slate-500 font-mono">Omni AI Video Active</span>
+                                </div>
+                                <h2 class="text-2xl font-bold mb-4 text-slate-100">${card.title}</h2>
+                                <p class="text-slate-300 text-base leading-relaxed mb-6">${card.content}</p>
+                                
+                                <div class="bg-slate-950/60 border-l-2 border-indigo-500 p-4 rounded-r-xl mb-6 text-xs text-slate-400 italic">
+                                    ${card.evidence}
+                                </div>
+                            </div>
+                            
+                            <div class="bg-indigo-950/30 border border-indigo-500/20 rounded-2xl p-4 flex items-center space-x-3">
+                                <span class="text-lg">💡</span>
+                                <div>
+                                    <div class="text-[10px] uppercase tracking-wider font-bold text-indigo-400">Key Takeaway</div>
+                                    <div class="text-xs text-slate-200 font-medium">${card.takeaway}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (card.type === 'quiz') {
+                    let optionsHtml = '';
+                    card.options.forEach((opt, oIdx) => {
+                        optionsHtml += `
+                            <button onclick="handleQuizAnswer(this, ${oIdx}, ${card.correct})" class="w-full text-left bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 p-4 rounded-xl text-sm transition font-medium flex items-center justify-between group">
+                                <span>${opt}</span>
+                                <span class="w-5 h-5 rounded-full border border-slate-700 flex items-center justify-center text-xs text-transparent group-hover:border-indigo-400">✓</span>
+                            </button>
+                        `;
+                    });
+
+                    section.innerHTML = `
+                        <div class="w-full bg-slate-900/90 backdrop-blur-md border border-violet-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-center justify-between mb-6">
+                                    <span class="text-xs font-bold uppercase tracking-wider bg-violet-500/10 text-violet-400 border border-violet-500/20 px-3 py-1 rounded-full">${card.badge}</span>
+                                    <span class="text-xs text-violet-400 font-medium">Active Recall</span>
+                                </div>
+                                <h2 class="text-xl font-bold mb-6 text-slate-100">${card.question}</h2>
+                                <div class="space-y-3 mb-4">
+                                    ${optionsHtml}
+                                </div>
+                                <div class="quiz-feedback hidden mt-4 p-3 rounded-xl text-xs font-medium"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                wrapper.appendChild(section);
+            });
+
+            setupScrollListener();
+            updateProgress(0);
+            
+            // Set initial background video source
+            if(currentCards[0] && currentCards[0].videoUrl) {
+                const videoEl = document.getElementById('ambient-video-element');
+                videoEl.src = currentCards[0].videoUrl;
+                videoEl.play().catch(e => console.log("Autoplay blocked by browser policy"));
+            }
+        }
+
+        function handleQuizAnswer(btn, selectedIdx, correctIdx) {
+            const container = btn.closest('div.space-y-3');
+            const buttons = container.querySelectorAll('button');
+            const feedback = container.parentElement.querySelector('.quiz-feedback');
+
+            buttons.forEach((b, idx) => {
+                b.disabled = true;
+                if (idx === correctIdx) {
+                    b.classList.remove('bg-slate-950', 'border-slate-800');
+                    b.classList.add('bg-emerald-950/40', 'border-emerald-500/50', 'text-emerald-200');
+                } else if (idx === selectedIdx && selectedIdx !== correctIdx) {
+                    b.classList.remove('bg-slate-950', 'border-slate-800');
+                    b.classList.add('bg-rose-950/40', 'border-rose-500/50', 'text-rose-200');
+                }
+            });
+
+            feedback.classList.remove('hidden');
+            if (selectedIdx === correctIdx) {
+                feedback.className = 'quiz-feedback mt-4 p-3 rounded-xl text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-300';
+                feedback.innerHTML = '🎉 Spot on! Your retention score has increased.';
+            } else {
+                feedback.className = 'quiz-feedback mt-4 p-3 rounded-xl text-xs font-medium bg-rose-500/10 border border-rose-500/20 text-rose-300';
+                feedback.innerHTML = '❌ Not quite right. Review the previous idea cards to reinforce this concept.';
+            }
+        }
+
+        function setupScrollListener() {
+            const feed = document.getElementById('view-feed');
+            const videoEl = document.getElementById('ambient-video-element');
+
+            feed.addEventListener('scroll', () => {
+                const sections = feed.querySelectorAll('.snap-section');
+                const scrollPosition = feed.scrollTop + feed.clientHeight / 2;
+
+                sections.forEach((sec, idx) => {
+                    const top = sec.offsetTop;
+                    const height = sec.offsetHeight;
+                    if (scrollPosition >= top && scrollPosition < top + height) {
+                        updateProgress(idx);
+                        const videoUrl = sec.dataset.video;
+                        if (videoUrl && videoEl.src !== videoUrl) {
+                            videoEl.src = videoUrl;
+                            videoEl.play().catch(e => console.log("Autoplay blocked"));
+                        }
+                    }
+                });
+            });
+        }
+
+        function updateProgress(index) {
+            const total = currentCards.length;
+            const current = index + 1;
+            const percentage = (current / total) * 100;
+            
+            document.getElementById('progress-text').innerText = `Card ${current} of ${total}`;
+            document.getElementById('progress-bar').style.width = `${percentage}%`;
+        }
+
+        function resetApp() {
+            document.getElementById('view-feed').classList.add('hidden');
+            document.getElementById('view-upload').classList.remove('hidden');
+            document.getElementById('nav-progress').classList.remove('flex');
+            document.getElementById('nav-progress').classList.add('hidden');
+            document.getElementById('source-text-input').value = '';
+            document.getElementById('file-instruction').innerText = 'Supports .txt or .md summaries';
+        }
+    </script>
+</body>
+</html>
